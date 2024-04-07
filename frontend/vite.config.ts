@@ -65,9 +65,9 @@ export default defineConfig(({ mode }) => ({
 	},
 	server: {
 		proxy: {
-			'/v1': 'http://localhost:7878',
+			'/v1': 'https://v0-admin.ngrok.io',
 			// TODO: Currently having this proxy to /annotator, kinda lame
-			'/openui': 'http://localhost:7878'
+			'/openui': 'https://v0-admin.ngrok.io'
 		}
 	},
 	plugins: [
