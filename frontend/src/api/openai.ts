@@ -5,14 +5,20 @@ function host() {
 	const port = window.location.port ? `:${window.location.port}` : ''
 	return `${protocol}//${hostname}${port}`
 }
-
-const openai = new OpenAI({
+/* I patched OpenAI here so that users can use basic auth behind a proxy if they want */
+class MyOpenAI extends OpenAI {
+	// eslint-disable-next-line class-methods-use-this, @typescript-eslint/class-methods-use-this, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
+	protected override authHeaders(_opts: any) {
+		return {}
+	}
+}
+const openai = new MyOpenAI({
 	apiKey: 'sk-fake',
 	baseURL: `${host()}/v1`,
 	dangerouslyAllowBrowser: true
 })
 
-export type Action = 'create' | 'refine';
+export type Action = 'create' | 'refine'
 interface CreateOptions {
 	model: string
 	systemPrompt: string
@@ -23,7 +29,52 @@ interface CreateOptions {
 	action: Action
 }
 
-export const systemPrompt = `You're a frontend web developer that specializes in tailwindcss. Given a description or an image, generate HTML with tailwindcss. You should support both dark and light mode. It should render nicely on desktop, tablet, and mobile. Keep your responses concise and just return HTML that would appear in the <body> no need for <head>. Use placehold.co for placeholder images. If the user asks for interactivity, use modern ES6 javascript and native browser apis to handle events.`
+export const systemPrompt = `🎉 Greetings, TailwindCSS Virtuoso! 🌟
+
+You've mastered the art of frontend design and TailwindCSS! Your mission is to transform detailed descriptions or compelling images into stunning HTML using the versatility of TailwindCSS. Ensure your creations are seamless in both dark and light modes! Your designs should be responsive and adaptable across all devices – be it desktop, tablet, or mobile.
+
+*Design Guidelines:*
+- Utilize placehold.co for placeholder images and descriptive alt text.
+- For interactive elements, leverage modern ES6 JavaScript and native browser APIs for enhanced functionality.
+- Inspired by shadcn, we provide the following colors which handle both light and dark mode:
+
+\`\`\`css
+  --background
+  --foreground
+  --primary
+	--border
+  --input
+  --ring
+  --primary-foreground
+  --secondary
+  --secondary-foreground
+  --accent
+  --accent-foreground
+  --destructive
+  --destructive-foreground
+  --muted
+  --muted-foreground
+  --card
+  --card-foreground
+  --popover
+  --popover-foreground
+\`\`\`
+
+Prefer using these colors when appropriate, for example:
+
+\`\`\`html
+<button class="bg-secondary text-secondary-foreground hover:bg-secondary/80">Click me</button>
+<span class="text-muted-foreground">This is muted text</span>
+\`\`\`
+
+*Implementation Rules:*
+- Only implement elements within the \`<body>\` tag, don't bother with \`<html>\` or \`<head>\` tags.
+- Avoid using SVGs directly. Instead, use the \`<img>\` tag with a descriptive title as the alt attribute and add .svg to the placehold.co url, for example:
+
+\`\`\`html
+<img aria-hidden="true" alt="magic-wand" src="/icons/24x24.svg?text=🪄" />
+\`\`\`
+`
 
 const GPT4_MAX_TOKENS = 4096
 
@@ -50,22 +101,25 @@ emoji: 🎉
 			content: sp
 		}
 	]
+
+	let imageUrl = image ?? ''
+	// OpenAI wants a data url, ollama just wants base64 bytes
+	// TODO: this can be removed once Ollama OpenAI compat is fixed
+	if (image && model.startsWith('ollama/')) {
+		const parts = image.toString().split(',')
+		imageUrl = parts.pop() ?? ''
+	}
+
 	if (action === 'create') {
 		// Call the vision models only for creating action
 		if (image) {
 			// TODO: configurable
 			if (model.startsWith('gpt')) {
-				model = 'gpt-4-turbo-2024-04-09'
+				model = 'gpt-4o'
 			}
-			let imageUrl = image
-			// OpenAI wants a data url, ollama just wants base64 bytes
-			if (model.startsWith('ollama/')) {
-				const parts = image.toString().split(',')
-				imageUrl = parts.pop() ?? ''
-			}
-			const textImageRequirements = query ?
-				`The following are some special requirements: \n ${query}`
-				: '';
+			const textImageRequirements = query
+				? `The following are some special requirements: \n ${query}`
+				: ''
 			messages.push({
 				role: 'user',
 				content: [
@@ -81,7 +135,7 @@ emoji: 🎉
 					}
 				]
 			})
-		} else { 
+		} else {
 			messages.push({
 				role: 'user',
 				content: query
@@ -89,15 +143,42 @@ emoji: 🎉
 		}
 	} else {
 		// Annotation comments should like <!--FIX (1): make the image larger-->
-		const hasAnnotationComments = /<!--FIX (\(\d+\)): (.+)-->/g.test(html as string);
-		let userPrompt = hasAnnotationComments ? 'Address the FIX comments.': query
-		
-		const instructions = `Given the following HTML:\n\n${html}\n\n${userPrompt}`
-		console.log('Providing instructions:\n', instructions)
-		messages.push({
-			role: 'user',
-			content: instructions
-		})
+		const hasAnnotationComments = /<!--FIX (\(\d+\)): (.+)-->/g.test(
+			html as string
+		)
+		let userPrompt = hasAnnotationComments ? 'Address the FIX comments.' : query
+		if (userPrompt === '') {
+			userPrompt = 'Lets make this look more professional'
+		}
+
+		const instructions = `Given the following HTML${image ? ' and image' : ''}:\n\n${html}\n\n${userPrompt}`
+		console.log('Sending instructions:', instructions)
+		if (image) {
+			// TODO: configurable
+			if (model.startsWith('gpt')) {
+				model = 'gpt-4o'
+			}
+			messages.push({
+				role: 'user',
+				content: [
+					{
+						type: 'text',
+						text: instructions
+					},
+					{
+						type: 'image_url',
+						image_url: {
+							url: imageUrl
+						}
+					}
+				]
+			})
+		} else {
+			messages.push({
+				role: 'user',
+				content: instructions
+			})
+		}
 	}
 
 	const response = await openai.chat.completions.create({
@@ -116,17 +197,17 @@ emoji: 🎉
 	return markdown
 }
 
-const systemPromptConvert = `You're a frontend web developer that specializes in $FRAMEWORK.
-Given html and javascript, generate a $FRAMEWORK component. Factor the code into smaller
-components if necessary. Keep all code in one file. Use hooks and put tailwind class strings
-that are repeated atleast 3 times into a shared constant. Leave comments when necessary.`
-
 interface ConvertOptions {
 	model: string
 	temperature: number
 	framework: string
 	html: string
 }
+
+const systemPromptConvert = `You're a frontend web developer that specializes in $FRAMEWORK.
+Given html and javascript, generate a $FRAMEWORK component. Factor the code into smaller
+components if necessary. Keep all code in one file. Use hooks and put tailwind class strings
+that are repeated atleast 3 times into a shared constant. Leave comments when necessary.`
 
 export async function convert(
 	options: ConvertOptions,
@@ -159,9 +240,7 @@ export async function convert(
 	/*
   const tokens = encoder.encode(inputTok)
   encoder.free()
-  console.log('Model: ', model)
   // TODO: use a bigger model if we're length limited
-  console.log('Tokens: ', tokens.length)
   */
 	const response = await openai.chat.completions.create({
 		model,

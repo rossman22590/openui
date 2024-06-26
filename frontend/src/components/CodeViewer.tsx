@@ -1,6 +1,5 @@
-import { DownloadIcon, PlusCircledIcon } from '@radix-ui/react-icons'
+import { PlusCircledIcon } from '@radix-ui/react-icons'
 import copyTextToClipboard from '@uiw/copy-to-clipboard'
-import ShareDialog from 'components/ShareDialog'
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -11,15 +10,18 @@ import {
 } from 'components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from 'components/ui/tooltip'
 import { useAtom, useAtomValue } from 'jotai'
+import { themes } from 'lib/themes'
 import { Suspense, lazy, useEffect, useState } from 'react'
 import {
+	FRAMEWORKS,
 	convertFrameworkAtom,
 	historyAtomFamily,
 	selectedFrameworkAtom,
-	FRAMEWORKS,
+	uiThemeAtom,
 	type Framework
 } from 'state'
-import { downloadStringAsFile } from '../lib/utils'
+import { wrappedCode } from '../lib/html'
+import { cn } from '../lib/utils'
 import Scaffold from './Scaffold'
 
 const CodeEditor = lazy(async () => import('components/CodeEditor'))
@@ -64,17 +66,18 @@ ${render
 interface ViewerProps {
 	id: string
 	code: string
-	shared: boolean
 }
 
-export default function CodeViewer({ id, code, shared }: ViewerProps) {
+function stripCodeblocks(code: string) {
+	return code.replaceAll(/```(.*)\n?/g, '')
+}
+
+export default function CodeViewer({ id, code }: ViewerProps) {
 	const item = useAtomValue(historyAtomFamily({ id }))
+	const uiTheme = useAtomValue(uiThemeAtom)
+	const theme = themes.find(t => t.name === uiTheme)
 	const [framework, setFramework] = useAtom(selectedFrameworkAtom)
 	const [convertFramework, setConvertFramework] = useAtom(convertFrameworkAtom)
-	/* TODO: disabled for now
-	const setEditedHTML = useSetAtom(editedHTMLAtom)
-	const saveHistory = useSaveHistory()
-	*/
 
 	// local state
 	const [currentCode, setCurrentCode] = useState<string>(code)
@@ -86,7 +89,9 @@ export default function CodeViewer({ id, code, shared }: ViewerProps) {
 		} else if (framework === 'html') {
 			setCurrentCode(code)
 		} else {
-			setCurrentCode(item.components?.[framework] ?? 'Loading...')
+			setCurrentCode(
+				stripCodeblocks(item.components?.[framework] ?? 'Loading...')
+			)
 		}
 	}, [framework, code, item.components])
 
@@ -106,20 +111,22 @@ export default function CodeViewer({ id, code, shared }: ViewerProps) {
 
 	return (
 		<div className='code-syntax-wrapper'>
-			<div className='code-syntax relative border'>
-				<div className='grid w-full grid-cols-2 rounded-t-md border-b'>
-					<ul className='flex text-center text-sm font-medium text-gray-500 dark:text-gray-400'>
-						{frameworks.map(f => (
+			<div className='code-syntax relative rounded-lg border'>
+				<div className='grid w-full grid-cols-4 rounded-t-md border-b'>
+					<ul className='z-10 col-span-3 flex max-h-9 w-full overflow-y-hidden overflow-x-scroll rounded-tl-lg bg-background text-center text-sm font-medium text-gray-500 dark:text-gray-400'>
+						{frameworks.map((f, i) => (
 							<li key={f}>
 								<button
 									type='button'
 									// eslint-disable-next-line react/jsx-handler-names
 									onClick={() => setFramework(f)}
-									className={`inline-block w-full border-r p-2 px-3 text-secondary-foreground ${
+									className={cn(
+										'inline-block w-full whitespace-nowrap border-r p-2 px-3 text-secondary-foreground',
 										f === framework
 											? 'bg-background'
-											: 'bg-secondary hover:bg-background'
-									}`}
+											: 'bg-secondary hover:bg-background',
+										i === 0 && 'rounded-tl-lg'
+									)}
 								>
 									{f.toUpperCase()}
 								</button>
@@ -162,40 +169,14 @@ export default function CodeViewer({ id, code, shared }: ViewerProps) {
 						</li>
 					</ul>
 					<div className='flex justify-end'>
-						{/* TODO: disabling for now 
 						<button
 							type='button'
-							disabled={framework !== 'html'}
 							// eslint-disable-next-line react/jsx-handler-names
-							onClick={() => {
-								setItem(it => ({ ...it, html: code }))
-								saveHistory()
-							}}
-							className='flex items-center border-l px-3 text-sm text-secondary-foreground hover:bg-background'
-						>
-							Save
-						</button> */}
-						{id !== 'new' && !shared && <ShareDialog />}
-						<button
-							type='button'
-							aria-label='Download'
-							// eslint-disable-next-line react/jsx-handler-names
-							onClick={() => {
-								const ext = framework === 'html' ? '.html' : '.js'
-								downloadStringAsFile(
-									code,
-									framework === 'html' ? 'text/html' : 'application/javascript',
-									`${item.name}${ext}`
+							onClick={() =>
+								copyTextToClipboard(
+									wrappedCode(currentCode, framework, theme ?? themes[0])
 								)
-							}}
-							className='flex items-center border-l px-3 text-sm text-secondary-foreground hover:bg-background'
-						>
-							<DownloadIcon />
-						</button>
-						<button
-							type='button'
-							// eslint-disable-next-line react/jsx-handler-names
-							onClick={() => copyTextToClipboard(currentCode)}
+							}
 							className='flex items-center border-l px-3 text-sm text-secondary-foreground hover:bg-background'
 						>
 							<svg
@@ -212,20 +193,15 @@ export default function CodeViewer({ id, code, shared }: ViewerProps) {
 						</button>
 					</div>
 				</div>
-				<div className='relative bg-zinc-50 dark:bg-zinc-900'>
+				<div className='relative rounded-b-lg bg-zinc-900'>
 					<div
-						className='max-h-[24vh] overflow-scroll pb-8 text-sm'
+						className='h-[calc(100vh-354px)] max-w-[78vw] pb-8 text-sm'
 						tabIndex={-1}
 					>
-						<Suspense fallback={<Scaffold loading />}>
+						<Suspense fallback={<Scaffold isLoading />}>
 							{/* TODO: jsx editing */}
 							{code ? (
-								<CodeEditor
-									code={currentCode}
-									framework={framework}
-									// eslint-disable-next-line react/jsx-handler-names
-									// onChange={(value: string) => setEditedHTML(value)}
-								/>
+								<CodeEditor code={currentCode} framework={framework} />
 							) : undefined}
 						</Suspense>
 					</div>

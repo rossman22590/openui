@@ -2,39 +2,25 @@
 import eslintPlugin from '@nabla/vite-plugin-eslint'
 import react from '@vitejs/plugin-react'
 import type { PluginOption } from 'vite'
-import { defineConfig, splitVendorChunkPlugin } from 'vite'
+import { defineConfig } from 'vite'
 import mkcert from 'vite-plugin-mkcert'
+import monacoEditorPluginModule from 'vite-plugin-monaco-editor'
 import { VitePWA } from 'vite-plugin-pwa'
 import tsconfigPaths from 'vite-tsconfig-paths'
 
-// Likely don't need this and was mucking with my build
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const pwaPlugin = VitePWA({
-	registerType: 'autoUpdate',
-	includeAssets: [
-		'favicon.png',
-		'robots.txt',
-		'apple-touch-icon.png',
-		'icons/*.svg',
-		'fonts/*.woff2'
-	],
-	manifest: {
-		theme_color: '#BD34FE',
-		icons: [
-			{
-				src: '/android-chrome-192x192.png',
-				sizes: '192x192',
-				type: 'image/png',
-				purpose: 'any maskable'
-			},
-			{
-				src: '/android-chrome-512x512.png',
-				sizes: '512x512',
-				type: 'image/png'
-			}
-		]
-	}
-})
+// LAME, see: https://github.com/vdesjs/vite-plugin-monaco-editor/issues/21
+const isObjectWithDefaultFunction = (
+	module: unknown
+): module is { default: typeof monacoEditorPluginModule } =>
+	// eslint-disable-next-line eqeqeq
+	module != undefined &&
+	typeof module === 'object' &&
+	'default' in module &&
+	typeof module.default === 'function'
+
+const monacoEditorPlugin = isObjectWithDefaultFunction(monacoEditorPluginModule)
+	? monacoEditorPluginModule.default
+	: monacoEditorPluginModule
 
 const inCodespace = process.env.GITHUB_CODESPACE_TOKEN !== undefined
 const plugins: PluginOption[] = [eslintPlugin()]
@@ -72,8 +58,43 @@ export default defineConfig(({ mode }) => ({
 	},
 	plugins: [
 		tsconfigPaths(),
-		splitVendorChunkPlugin(),
-		react(),
+		VitePWA({
+			registerType: 'autoUpdate',
+			workbox: {
+				globIgnores: ['**/annotator/**'],
+				navigateFallbackDenylist: [/\/openui\/.*/, /\/v1\/.*/]
+			},
+			manifest: {
+				name: 'OpenUI by Weights & Biases',
+				short_name: 'OpenUI',
+				display: 'standalone',
+				background_color: '#000000',
+				theme_color: '#15abbc',
+				icons: [
+					{
+						src: '/android-chrome-192x192.png',
+						sizes: '192x192',
+						type: 'image/png'
+					},
+					{
+						src: '/android-chrome-512x512.png',
+						sizes: '512x512',
+						type: 'image/png'
+					}
+				],
+				start_url: '/ai?app=pwa'
+			}
+		}),
+		monacoEditorPlugin({
+			customWorkers: [
+				{ label: 'tailwindcss', entry: 'monaco-tailwindcss/tailwindcss.worker' }
+			]
+		}),
+		react({
+			babel: {
+				presets: ['jotai/babel/preset']
+			}
+		}),
 		...(mode === 'test' ? [] : plugins)
 	]
 }))

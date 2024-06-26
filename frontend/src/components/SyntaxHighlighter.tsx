@@ -1,8 +1,9 @@
-import { useMediaQuery } from 'hooks'
+import { useAtomValue } from 'jotai'
 import { PrismLight } from 'react-syntax-highlighter'
 import jsx from 'react-syntax-highlighter/dist/cjs/languages/prism/jsx'
+import { vsDark } from 'react-syntax-highlighter/dist/cjs/styles/prism'
 import vsLight from 'react-syntax-highlighter/dist/cjs/styles/prism/material-light'
-import vsDark from 'react-syntax-highlighter/dist/cjs/styles/prism/vs-dark'
+import { darkModeAtom } from '../state'
 // import themeDark from 'react-syntax-highlighter/dist/cjs/styles/prism/vsc-dark-plus'
 
 PrismLight.registerLanguage('jsx', jsx)
@@ -16,13 +17,14 @@ interface SyntaxHighlighterProps {
 }
 
 export default function SyntaxHighlighter(props: SyntaxHighlighterProps) {
-	const darkMode = useMediaQuery('(prefers-color-scheme: dark)')
+	const darkMode = useAtomValue(darkModeAtom)
+	const defaultProps = { language: 'jsx', ...props }
 	// eslint-disable-next-line react/jsx-props-no-spreading
-	return <PrismLight {...props} style={darkMode ? vsDark : vsLight} />
-}
-
-SyntaxHighlighter.defaultProps = {
-	PreTag: undefined,
-	className: undefined,
-	language: 'jsx'
+	return (
+		<PrismLight
+			// eslint-disable-next-line react/jsx-props-no-spreading
+			{...defaultProps}
+			style={darkMode === 'dark' ? vsDark : vsLight}
+		/>
+	)
 }

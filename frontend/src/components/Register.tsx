@@ -8,21 +8,26 @@ import {
 	DialogHeader,
 	DialogTitle
 } from 'components/ui/dialog'
+import { useSetAtom } from 'jotai'
 import Cookies from 'js-cookie'
 import { useEffect, useState } from 'react'
+import { sessionAtom } from 'state'
 
 // eslint-disable-next-line import/prefer-default-export
 export default function Register() {
 	const [error, setError] = useState<string | undefined>()
 	const [open, setOpen] = useState(false)
+	const setSessionData = useSetAtom(sessionAtom)
 
 	useEffect(() => {
 		const restoreSession = async () => {
 			const session = await getSession()
 			// check if the response was a 404
 			if (session === undefined) {
+				setSessionData(undefined)
 				setOpen(true)
 			} else {
+				setSessionData(session)
 				setOpen(false)
 			}
 		}
@@ -31,8 +36,8 @@ export default function Register() {
 			setError(errorMessage)
 			Cookies.remove('error')
 		}
-		restoreSession().catch(error_ => console.error(error_))
-	}, [])
+		restoreSession().catch((error_: unknown) => console.error(error_))
+	}, [setSessionData])
 
 	const title = 'Login'
 
